@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <title>BLE Advert Scanner</title>
+  <style>
+    :root {
+      --bg:#0b1220; --card:#111827; --muted:#94a3b8; --text:#f8fafc;
+      --accent:#3b82f6; --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --border:#334155;
+      --chip:#0f172a; --radius:18px; --shadow:0 10px 30px rgba(0,0,0,.25);
+    }
+    * { box-sizing:border-box; }
+    html, body { min-height:100%; }
+    body {
+      margin:0; padding:14px; color:var(--text); font-family:Arial, Helvetica, sans-serif;
+      background:radial-gradient(circle at top, rgba(59,130,246,.13), transparent 28%), var(--bg);
+    }
+    .app { max-width:620px; margin:0 auto; display:grid; gap:12px; padding-bottom:26px; }
+    .card {
+      background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015));
+      border:1px solid var(--border); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow);
+    }
+    h1 { margin:0; font-size:24px; font-weight:800; }
+    .sub { color:var(--muted); font-size:13px; line-height:1.45; margin-top:6px; }
+    .stack { display:grid; gap:10px; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media (max-width:460px) { .row { grid-template-columns:1fr; } }
+    label { display:block; font-size:12px; color:var(--muted); margin:0 0 6px 2px; }
+    input, select, textarea, button {
+      width:100%; border-radius:14px; border:1px solid var(--border); background:rgba(15,23,42,.92);
+      color:var(--text); padding:13px 14px; font-size:15px; outline:none;
+    }
+    textarea { min-height:84px; resize:vertical; }
+    input:focus, select:focus, textarea:focus { border-color:rgba(59,130,246,.8); box-shadow:0 0 0 3px rgba(59,130,246,.18); }
+    button { border:none; cursor:pointer; font-weight:700; }
+    button.primary { background:var(--accent); }
+    button.secondary { background:#475569; }
+    button.warn { background:var(--warn); }
+    button.bad { background:var(--bad); }
+    button.ghost { background:rgba(255,255,255,.04); border:1px solid var(--border); }
+    .chips { display:flex; gap:8px; flex-wrap:wrap; }
+    .chip {
+      width:auto; min-height:36px; padding:9px 12px; border-radius:999px; background:var(--chip);
+      border:1px solid var(--border); font-size:12px;
+    }
+    .chip.active { background:var(--accent); border-color:transparent; }
+    .status { color:var(--muted); font-size:13px; line-height:1.45; white-space:pre-wrap; min-height:20px; }
+    .statGrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    @media (max-width:460px) { .statGrid { grid-template-columns:1fr; } }
+    .stat { background:rgba(255,255,255,.025); border:1px solid var(--border); border-radius:14px; padding:10px; }
+    .k { color:var(--muted); font-size:11px; margin-bottom:4px; }
+    .v { font-size:17px; font-weight:800; overflow-wrap:anywhere; }
+    .small { font-size:12px; color:var(--muted); }
+    .tableWrap { max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:14px; background:rgba(15,23,42,.65); }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th, td { border-bottom:1px solid rgba(255,255,255,.06); padding:10px 8px; text-align:left; vertical-align:top; }
+    th { position:sticky; top:0; background:#0f172a; color:#cbd5e1; z-index:1; }
+    .badge { display:inline-block; padding:4px 9px; border-radius:999px; font-size:11px; font-weight:800; }
+    .ok { background:rgba(22,163,74,.15); color:#86efac; }
+    .warnTxt { background:rgba(217,119,6,.15); color:#fcd34d; }
+    .badTxt { background:rgba(220,38,38,.15); color:#fca5a5; }
+    details > summary { cursor:pointer; font-weight:800; }
+    code { color:#cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="card">
+      <h1>BLE Advert Scanner</h1>
+      <div class="sub">
+        Scans nearby Bluetooth Low Energy advertisements and reads out selected manufacturer data or production messages.
+      </div>
+    </div>
+
+    <div class="card stack">
+      <div class="row">
+        <button id="startBtn" class="primary">Start BLE Scan</button>
+        <button id="stopBtn" class="bad">Stop Scan</button>
+      </div>
+      <button id="unlockVoiceBtn" class="secondary">Enable Voice</button>
+      <div id="status" class="status">Ready. On Android Chrome, Bluetooth scanning may require Experimental Web Platform Features.</div>
+    </div>
+
+    <div class="card stack">
+      <div class="row">
+        <div>
+          <label for="companyId">Manufacturer Company ID, hex</label>
+          <input id="companyId" value="ffff" placeholder="Example: 004C or FFFF" />
+        </div>
+        <div>
+          <label for="nameFilter">Optional Name Filter</label>
+          <input id="nameFilter" value="" placeholder="Example: IoTI, Tag, ESP" />
+        </div>
+      </div>
+
+      <div>
+        <label for="decodeMode">Decode Mode</label>
+        <select id="decodeMode">
+          <option value="auto">Auto: try text, otherwise hex</option>
+          <option value="text">Text from manufacturer bytes</option>
+          <option value="hex">Raw hex only</option>
+          <option value="iotiDemo">IoTI demo: temp, count, reject, status</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="repeatSeconds">Speak same device again after seconds</label>
+          <input id="repeatSeconds" type="number" min="1" value="20" />
+        </div>
+        <div>
+          <label for="criticalWord">Critical word to speak immediately</label>
+          <input id="criticalWord" value="critical" />
+        </div>
+      </div>
+
+      <div class="chips">
+        <button id="speakAllBtn" class="chip active" type="button">Speak Data</button>
+        <button id="onlyCompanyBtn" class="chip active" type="button">Only Company ID</button>
+        <button id="keepRepeatedBtn" class="chip active" type="button">Repeated Packets</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="statGrid">
+        <div class="stat"><div class="k">Packets Seen</div><div id="packetCount" class="v">0</div></div>
+        <div class="stat"><div class="k">Devices Seen</div><div id="deviceCount" class="v">0</div></div>
+        <div class="stat"><div class="k">Last RSSI</div><div id="lastRssi" class="v">--</div></div>
+        <div class="stat"><div class="k">Last Message</div><div id="lastMessage" class="v">--</div></div>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <label for="manualText">Manual voice test</label>
+      <textarea id="manualText">Manufacturing alert. Machine one temperature is high.</textarea>
+      <button id="manualSpeakBtn" class="warn">Speak Test Message</button>
+    </div>
+
+    <details class="card" open>
+      <summary>Received Advertisements</summary>
+      <div style="height:10px;"></div>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Name</th>
+              <th>RSSI</th>
+              <th>Company</th>
+              <th>Data</th>
+            </tr>
+          </thead>
+          <tbody id="adBody"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary>Important Notes</summary>
+      <div class="sub">
+        Web Bluetooth advertisement scanning is experimental in browsers. A proper Android APK gives better BLE scanning and background scanning. This HTML version is best for testing and simple foreground use.
+      </div>
+    </details>
+  </div>
+
+<script>
+  let scan = null;
+  let packetCount = 0;
+  const devices = new Map();
+  const lastSpoken = new Map();
+  let voiceReady = false;
+  let speakData = true;
+  let onlyCompany = true;
+  let keepRepeated = true;
+
+  function $(id) { return document.getElementById(id); }
+
+  function setStatus(msg, isError = false) {
+    const el = $("status");
+    el.style.color = isError ? "#fca5a5" : "#94a3b8";
+    el.textContent = msg;
+  }
+
+  function cleanHex(value) {
+    return String(value || "").trim().replace(/^0x/i, "").replace(/[^a-fA-F0-9]/g, "").padStart(4, "0").slice(-4).toLowerCase();
+  }
+
+  function hexToNumber(value) {
+    const n = parseInt(cleanHex(value), 16);
+    return Number.isFinite(n) ? n : 0xffff;
+  }
+
+  function bytesToHex(view) {
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join(" ");
+  }
+
+  function bytesToText(view) {
+    const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    let printable = 0;
+    for (const b of bytes) {
+      if ((b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9) printable++;
+    }
+    if (!bytes.length || printable / bytes.length < 0.75) return "";
+    try {
+      return new TextDecoder().decode(bytes).replace(/\0/g, "").trim();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function decodeIotiDemo(view) {
+    const b = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+    if (b.length < 6) return "";
+    const tempRaw = (b[1] << 8) | b[0];
+    const temp = (tempRaw > 32767 ? tempRaw - 65536 : tempRaw) / 10;
+    const count = b[2];
+    const reject = b[3];
+    const status = b[4];
+    const machine = b[5];
+    const state = status === 2 ? "critical" : status === 1 ? "warning" : "normal";
+    return "Machine " + machine + ", temperature " + temp.toFixed(1) + " degrees, count " + count + ", reject " + reject + ", status " + state + ".";
+  }
+
+  function decodeData(view) {
+    const mode = $("decodeMode").value;
+    if (mode === "hex") return bytesToHex(view);
+    if (mode === "text") return bytesToText(view) || bytesToHex(view);
+    if (mode === "iotiDemo") return decodeIotiDemo(view) || bytesToHex(view);
+
+    const text = bytesToText(view);
+    return text || bytesToHex(view);
+  }
+
+  function unlockVoice() {
+    if (!("speechSynthesis" in window)) {
+      setStatus("Speech synthesis is not supported in this browser.", true);
+      return;
+    }
+    try {
+      voiceReady = true;
+      const warmup = new SpeechSynthesisUtterance(" ");
+      warmup.volume = 0;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(warmup);
+      setTimeout(() => {
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+      }, 50);
+      setStatus("Voice enabled. You can now start scanning.");
+    } catch (e) {
+      setStatus("Could not enable voice.", true);
+    }
+  }
+
+  function pickVoice() {
+    try {
+      const voices = window.speechSynthesis.getVoices() || [];
+      return voices.find(v => (v.name || "").toLowerCase().includes("david"))
+        || voices.find(v => (v.lang || "").toLowerCase().startsWith("en"))
+        || voices[0]
+        || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function speak(text, force = false) {
+    if (!speakData && !force) return;
+    if (!("speechSynthesis" in window)) return;
+    if (!voiceReady) return;
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      const voice = pickVoice();
+      if (voice) u.voice = voice;
+      u.lang = voice && voice.lang ? voice.lang : "en-US";
+      u.rate = 0.92;
+      u.pitch = 0.9;
+      u.volume = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (e) {
+      console.warn("Speak failed:", e);
+    }
+  }
+
+  function shouldSpeak(key, message) {
+    const now = Date.now();
+    const repeatMs = Math.max(1, Number($("repeatSeconds").value) || 20) * 1000;
+    const criticalWord = String($("criticalWord").value || "").toLowerCase().trim();
+    const isCritical = criticalWord && String(message).toLowerCase().includes(criticalWord);
+    const last = lastSpoken.get(key) || 0;
+
+    if (isCritical || now - last > repeatMs) {
+      lastSpoken.set(key, now);
+      return true;
+    }
+    return false;
+  }
+
+  function addRow(time, name, rssi, company, data) {
+    const tr = document.createElement("tr");
+    const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    tr.innerHTML =
+      "<td>" + safe(time) + "</td>" +
+      "<td>" + safe(name) + "</td>" +
+      "<td>" + safe(rssi) + "</td>" +
+      "<td>" + safe(company) + "</td>" +
+      "<td>" + safe(data) + "</td>";
+    const body = $("adBody");
+    body.prepend(tr);
+    while (body.children.length > 120) body.removeChild(body.lastChild);
+  }
+
+  function onAdvertisement(event) {
+    packetCount++;
+    const name = event.device && event.device.name ? event.device.name : "Unknown";
+    const id = event.device && event.device.id ? event.device.id : name + "-" + Math.random();
+    const rssi = event.rssi ?? "--";
+    const wantedName = String($("nameFilter").value || "").trim().toLowerCase();
+    const wantedCompany = hexToNumber($("companyId").value);
+
+    if (wantedName && !name.toLowerCase().includes(wantedName)) return;
+
+    devices.set(id, { name, lastSeen: Date.now() });
+    $("packetCount").textContent = packetCount;
+    $("deviceCount").textContent = devices.size;
+    $("lastRssi").textContent = rssi;
+
+    let found = false;
+
+    if (event.manufacturerData && event.manufacturerData.size) {
+      event.manufacturerData.forEach((view, companyId) => {
+        if (onlyCompany && companyId !== wantedCompany) return;
+        found = true;
+        const companyText = "0x" + Number(companyId).toString(16).padStart(4, "0").toUpperCase();
+        const decoded = decodeData(view);
+        const time = new Date().toLocaleTimeString();
+        $("lastMessage").textContent = decoded || "--";
+        addRow(time, name, rssi, companyText, decoded);
+        const spoken = "Bluetooth advert from " + name + ". " + decoded;
+        if (shouldSpeak(id + "-" + companyText, decoded)) speak(spoken);
+      });
+    }
+
+    if (!found && !onlyCompany) {
+      const time = new Date().toLocaleTimeString();
+      addRow(time, name, rssi, "-", "No manufacturer data visible");
+    }
+  }
+
+  async function startScan() {
+    if (!navigator.bluetooth) {
+      setStatus("Web Bluetooth is not available in this browser. Use Android Chrome, or build a native APK.", true);
+      return;
+    }
+
+    try {
+      const companyId = hexToNumber($("companyId").value);
+      const filters = [];
+
+      if (onlyCompany) {
+        filters.push({ manufacturerData: [{ companyIdentifier: companyId }] });
+      }
+
+      const options = {
+        keepRepeatedDevices: keepRepeated
+      };
+
+      if (filters.length) options.filters = filters;
+      else options.acceptAllAdvertisements = true;
+
+      setStatus("Starting BLE advertisement scan...");
+      navigator.bluetooth.addEventListener("advertisementreceived", onAdvertisement);
+
+      if (navigator.bluetooth.requestLEScan) {
+        scan = await navigator.bluetooth.requestLEScan(options);
+        setStatus("Scanning. Keep this app open in the foreground.");
+      } else {
+        setStatus("requestLEScan is not available. Try Android Chrome with Experimental Web Platform Features enabled, or use a native APK.", true);
+      }
+    } catch (e) {
+      console.error(e);
+      setStatus(e.message || String(e), true);
+    }
+  }
+
+  function stopScan() {
+    try {
+      if (scan && scan.active && scan.stop) scan.stop();
+      scan = null;
+      navigator.bluetooth.removeEventListener("advertisementreceived", onAdvertisement);
+      setStatus("Scan stopped.");
+    } catch (e) {
+      setStatus("Could not stop scan cleanly.", true);
+    }
+  }
+
+  $("startBtn").onclick = startScan;
+  $("stopBtn").onclick = stopScan;
+  $("unlockVoiceBtn").onclick = unlockVoice;
+  $("manualSpeakBtn").onclick = () => {
+    unlockVoice();
+    setTimeout(() => speak($("manualText").value || "Test message.", true), 100);
+  };
+
+  $("speakAllBtn").onclick = () => {
+    speakData = !speakData;
+    $("speakAllBtn").classList.toggle("active", speakData);
+  };
+  $("onlyCompanyBtn").onclick = () => {
+    onlyCompany = !onlyCompany;
+    $("onlyCompanyBtn").classList.toggle("active", onlyCompany);
+  };
+  $("keepRepeatedBtn").onclick = () => {
+    keepRepeated = !keepRepeated;
+    $("keepRepeatedBtn").classList.toggle("active", keepRepeated);
+  };
+
+  window.addEventListener("click", () => {
+    if (!voiceReady) unlockVoice();
+  }, { once:true });
+
+  if ("speechSynthesis" in window) {
+    try { window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices(); } catch(e) {}
+  }
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(console.warn);
+    });
+  }
+</script>
+</body>
+</html>
